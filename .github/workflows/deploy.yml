@@ -37,6 +37,9 @@ jobs:
       - name: Validate Docker stack
         run: docker stack config -c deploy-compose.yml > /tmp/deploy-compose.rendered.yml
 
+      - name: Validate Cloudflare and overlay routing
+        run: bash scripts/validate-routing.sh
+
       - name: Explain skipped deployment
         if: env.DEPLOY_CONFIGURED != 'true'
         run: echo "Stack validation passed; deployment is skipped until the documented repository secrets are configured."

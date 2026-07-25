@@ -71,9 +71,7 @@ services:
         - traefik.docker.network=dokploy-network
         - traefik.swarm.network=dokploy-network
         - traefik.http.routers.lgtm-grafana.rule=Host(`${GRAFANA_DOMAIN:?GRAFANA_DOMAIN is required}`)
-        - traefik.http.routers.lgtm-grafana.entrypoints=websecure
-        - traefik.http.routers.lgtm-grafana.tls=true
-        - traefik.http.routers.lgtm-grafana.tls.certresolver=letsencrypt
+        - traefik.http.routers.lgtm-grafana.entrypoints=web
         - traefik.http.routers.lgtm-grafana.service=lgtm-grafana
         - traefik.http.services.lgtm-grafana.loadbalancer.server.port=3000
 
@@ -88,8 +86,11 @@ services:
         target: /etc/otelcol-contrib/config.yaml
         mode: 0444
     networks:
-      - lgtm-internal
-      - dokploy-network
+      lgtm-internal:
+      dokploy-network:
+      lgtm-ingest:
+        aliases:
+          - lgtm-otel-collector
     deploy:
       mode: replicated
       replicas: 1
@@ -118,19 +119,8 @@ services:
         - traefik.enable=true
         - traefik.docker.network=dokploy-network
         - traefik.swarm.network=dokploy-network
-        - traefik.http.routers.lgtm-otlp-grpc.rule=Host(`${OTEL_DOMAIN:?OTEL_DOMAIN is required}`) && HeaderRegexp(`Content-Type`, `^application/grpc.*`)
-        - traefik.http.routers.lgtm-otlp-grpc.priority=20
-        - traefik.http.routers.lgtm-otlp-grpc.entrypoints=websecure
-        - traefik.http.routers.lgtm-otlp-grpc.tls=true
-        - traefik.http.routers.lgtm-otlp-grpc.tls.certresolver=letsencrypt
-        - traefik.http.routers.lgtm-otlp-grpc.service=lgtm-otlp-grpc
-        - traefik.http.services.lgtm-otlp-grpc.loadbalancer.server.port=4317
-        - traefik.http.services.lgtm-otlp-grpc.loadbalancer.server.scheme=h2c
         - traefik.http.routers.lgtm-otlp-http.rule=Host(`${OTEL_DOMAIN:?OTEL_DOMAIN is required}`)
-        - traefik.http.routers.lgtm-otlp-http.priority=10
-        - traefik.http.routers.lgtm-otlp-http.entrypoints=websecure
-        - traefik.http.routers.lgtm-otlp-http.tls=true
-        - traefik.http.routers.lgtm-otlp-http.tls.certresolver=letsencrypt
+        - traefik.http.routers.lgtm-otlp-http.entrypoints=web
         - traefik.http.routers.lgtm-otlp-http.service=lgtm-otlp-http
         - traefik.http.services.lgtm-otlp-http.loadbalancer.server.port=4318
 
@@ -269,4 +259,6 @@ networks:
     driver: overlay
     internal: true
   dokploy-network:
+    external: true
+  lgtm-ingest:
     external: true

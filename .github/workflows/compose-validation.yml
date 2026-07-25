@@ -29,6 +29,9 @@ jobs:
       - name: Validate Docker stack
         run: docker stack config -c deploy-compose.yml > /tmp/deploy-compose.rendered.yml
 
+      - name: Validate Cloudflare and overlay routing
+        run: bash scripts/validate-routing.sh
+
       - name: Validate OpenTelemetry Collector configuration
         run: >-
           docker run --rm

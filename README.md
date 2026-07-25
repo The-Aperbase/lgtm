@@ -15,13 +15,24 @@ The stack keeps all signals for seven days, targets an 8 GB node, and uses Docke
 | Endpoint | Purpose | Authentication |
 | --- | --- | --- |
 | `https://$GRAFANA_DOMAIN` | Grafana | Strict Google OAuth email allowlist |
-| `https://$OTEL_DOMAIN` | OTLP/HTTP and OTLP/gRPC | `Authorization: Bearer $OTEL_API_KEY` |
+| `https://$OTEL_DOMAIN/v1/{metrics,logs,traces}` | OTLP/HTTP | `Authorization: Bearer $OTEL_API_KEY` |
 
-Loki, Tempo, Mimir, and the Collector ports are not published directly on the host. Traefik routes OTLP/gRPC to port 4317 over h2c by content type and routes remaining OTLP requests to port 4318.
+Cloudflare terminates public TLS and sends plain HTTP through the Tunnel to Traefik. Traefik routes Grafana to port 3000 and public OTLP/HTTP to Collector port 4318. No service publishes a host port, and there is no origin-side Let's Encrypt configuration.
 
-## 1. DNS and Google OAuth
+Cloudflare public-hostname tunnels do not support gRPC. Dokploy workloads use OTLP/gRPC directly over the private `lgtm-ingest` Docker overlay instead, avoiding Cloudflare, Traefik, public DNS, and an internet round trip.
 
-Create `A` or `AAAA` records for the Grafana and OTLP hostnames pointing at the Dokploy node.
+## 1. Configure Cloudflare Tunnel and Google OAuth
+
+The `cloudflared` Dokploy project and Dokploy's Traefik service must both be attached to the external `dokploy-network`. Configure these public hostnames in Cloudflare Zero Trust:
+
+| Public hostname | Service URL |
+| --- | --- |
+| `$GRAFANA_DOMAIN` | `http://dokploy-traefik:80` |
+| `$OTEL_DOMAIN` | `http://dokploy-traefik:80` |
+
+Leave the HTTP Host Header override empty so the original public hostname reaches Traefik's `Host(...)` router. Do not enable HTTPS or a certificate resolver for either origin in Dokploy; the browser and OTLP client still use public HTTPS because Cloudflare terminates TLS.
+
+When Cloudflare manages the Tunnel hostname, it creates the tunnel DNS route; do not point an `A` or `AAAA` record directly at the Dokploy node.
 
 Create a Google OAuth 2.0 **Web application**:
 
@@ -31,6 +42,12 @@ Create a Google OAuth 2.0 **Web application**:
 Record the client ID and client secret for the Dokploy environment.
 
 ## 2. Configure the Dokploy Stack
+
+Create the shared ingest overlay once on the Swarm manager before the first deployment:
+
+```bash
+docker network create --driver overlay --attachable lgtm-ingest
+```
 
 Create a Dokploy Compose service with:
 
@@ -100,7 +117,9 @@ Pull requests run the separate **Compose validation** workflow.
 
 ## 4. Configure OpenTelemetry clients
 
-### OTLP/HTTP
+Every public and private receiver requires the same Bearer API key.
+
+### Public OTLP/HTTP
 
 ```dotenv
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.com
@@ -108,15 +127,34 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20<API_KEY>
 ```
 
-### OTLP/gRPC
+### Direct OTLP/gRPC from another Dokploy stack
+
+Attach each telemetry-producing service to the external overlay:
+
+```yaml
+services:
+  app:
+    networks:
+      - default
+      - lgtm-ingest
+
+networks:
+  lgtm-ingest:
+    external: true
+```
+
+Then configure its exporter:
 
 ```dotenv
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.com
+OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm-otel-collector:4317
 OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_EXPORTER_OTLP_INSECURE=true
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20<API_KEY>
 ```
 
-Some SDK configuration APIs accept the literal header value `Bearer <API_KEY>` instead of the percent-encoded environment-variable form.
+For direct OTLP/HTTP, use `http://lgtm-otel-collector:4318` with `http/protobuf`. A container that is not attached to `lgtm-ingest` cannot resolve or reach this alias. Some SDK configuration APIs accept the literal header value `Bearer <API_KEY>` instead of the percent-encoded environment-variable form.
+
+If a client outside Dokploy requires gRPC, use Cloudflare WARP private-network routing or create a separately secured public gRPC endpoint that bypasses the public-hostname Tunnel. The latter requires its own origin TLS and firewall design and is intentionally outside this stack.
 
 Rotate the telemetry key by changing `OTEL_API_KEY` in Dokploy and redeploying. Update clients immediately; the stack intentionally accepts only the current key.
 
@@ -142,11 +180,13 @@ docker stack services <stack-name>
 
 Then verify:
 
-1. OTLP requests without the Bearer header are rejected.
-2. Authenticated test metrics, logs, and traces appear in Grafana Explore.
-3. Both administrator emails receive `GrafanaAdmin`.
-4. A listed viewer receives `Viewer`.
-5. An unlisted Google account is rejected.
+1. Public OTLP/HTTP requests without the Bearer header are rejected.
+2. Public OTLP/HTTP requests with the API key ingest metrics, logs, and traces.
+3. A service in another stack on `lgtm-ingest` resolves `lgtm-otel-collector` and ingests with OTLP/gRPC.
+4. A service outside `lgtm-ingest` cannot resolve or reach the Collector alias.
+5. Both administrator emails receive `GrafanaAdmin`.
+6. A listed viewer receives `Viewer`.
+7. An unlisted Google account is rejected.
 
 ### Persistence and backups
 
