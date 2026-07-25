@@ -1,0 +1,272 @@
+version: "3.8"
+
+services:
+  grafana:
+    image: grafana/grafana:13.1.1
+    environment:
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:?GRAFANA_DOMAIN is required}
+      GF_SERVER_ROOT_URL: https://${GRAFANA_DOMAIN:?GRAFANA_DOMAIN is required}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: lax
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: ${GRAFANA_BASIC_AUTH_ENABLED:-false}
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-true}
+      GF_AUTH_GOOGLE_ENABLED: "true"
+      GF_AUTH_GOOGLE_NAME: Google
+      GF_AUTH_GOOGLE_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GOOGLE_AUTO_LOGIN: ${GRAFANA_GOOGLE_AUTO_LOGIN:-true}
+      GF_AUTH_GOOGLE_CLIENT_ID: ${GRAFANA_GOOGLE_CLIENT_ID:?GRAFANA_GOOGLE_CLIENT_ID is required}
+      GF_AUTH_GOOGLE_CLIENT_SECRET: ${GRAFANA_GOOGLE_CLIENT_SECRET:?GRAFANA_GOOGLE_CLIENT_SECRET is required}
+      GF_AUTH_GOOGLE_SCOPES: openid email profile
+      GF_AUTH_GOOGLE_USE_PKCE: "true"
+      GF_AUTH_GOOGLE_USE_REFRESH_TOKEN: "true"
+      GF_AUTH_GOOGLE_VALIDATE_ID_TOKEN: "true"
+      GF_AUTH_GOOGLE_JWK_SET_URL: https://www.googleapis.com/oauth2/v3/certs
+      GF_AUTH_GOOGLE_ROLE_ATTRIBUTE_PATH: ${GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH:?GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH is required}
+      GF_AUTH_GOOGLE_ROLE_ATTRIBUTE_STRICT: "true"
+      GF_AUTH_GOOGLE_ALLOW_ASSIGN_GRAFANA_ADMIN: "true"
+      GF_AUTH_GOOGLE_SKIP_ORG_ROLE_SYNC: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_LOG_MODE: console
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/lgtm.yaml
+        mode: 0444
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - lgtm-internal
+      - dokploy-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=dokploy-network
+        - traefik.swarm.network=dokploy-network
+        - traefik.http.routers.lgtm-grafana.rule=Host(`${GRAFANA_DOMAIN:?GRAFANA_DOMAIN is required}`)
+        - traefik.http.routers.lgtm-grafana.entrypoints=websecure
+        - traefik.http.routers.lgtm-grafana.tls=true
+        - traefik.http.routers.lgtm-grafana.tls.certresolver=letsencrypt
+        - traefik.http.routers.lgtm-grafana.service=lgtm-grafana
+        - traefik.http.services.lgtm-grafana.loadbalancer.server.port=3000
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.157.0
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    environment:
+      OTEL_API_KEY: ${OTEL_API_KEY:?OTEL_API_KEY is required}
+    configs:
+      - source: otel-collector-config
+        target: /etc/otelcol-contrib/config.yaml
+        mode: 0444
+    networks:
+      - lgtm-internal
+      - dokploy-network
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 768M
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=dokploy-network
+        - traefik.swarm.network=dokploy-network
+        - traefik.http.routers.lgtm-otlp-grpc.rule=Host(`${OTEL_DOMAIN:?OTEL_DOMAIN is required}`) && HeaderRegexp(`Content-Type`, `^application/grpc.*`)
+        - traefik.http.routers.lgtm-otlp-grpc.priority=20
+        - traefik.http.routers.lgtm-otlp-grpc.entrypoints=websecure
+        - traefik.http.routers.lgtm-otlp-grpc.tls=true
+        - traefik.http.routers.lgtm-otlp-grpc.tls.certresolver=letsencrypt
+        - traefik.http.routers.lgtm-otlp-grpc.service=lgtm-otlp-grpc
+        - traefik.http.services.lgtm-otlp-grpc.loadbalancer.server.port=4317
+        - traefik.http.services.lgtm-otlp-grpc.loadbalancer.server.scheme=h2c
+        - traefik.http.routers.lgtm-otlp-http.rule=Host(`${OTEL_DOMAIN:?OTEL_DOMAIN is required}`)
+        - traefik.http.routers.lgtm-otlp-http.priority=10
+        - traefik.http.routers.lgtm-otlp-http.entrypoints=websecure
+        - traefik.http.routers.lgtm-otlp-http.tls=true
+        - traefik.http.routers.lgtm-otlp-http.tls.certresolver=letsencrypt
+        - traefik.http.routers.lgtm-otlp-http.service=lgtm-otlp-http
+        - traefik.http.services.lgtm-otlp-http.loadbalancer.server.port=4318
+
+  loki:
+    image: grafana/loki:3.7.4
+    command:
+      - -config.file=/etc/loki/config.yaml
+    configs:
+      - source: loki-config
+        target: /etc/loki/config.yaml
+        mode: 0444
+    volumes:
+      - loki-data:/loki
+    networks:
+      - lgtm-internal
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+  tempo:
+    image: grafana/tempo:3.0.2
+    command:
+      - -config.file=/etc/tempo/config.yaml
+    configs:
+      - source: tempo-config
+        target: /etc/tempo/config.yaml
+        mode: 0444
+    volumes:
+      - tempo-data:/var/tempo
+    networks:
+      - lgtm-internal
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+        reservations:
+          memory: 384M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+  mimir:
+    image: grafana/mimir:3.1.4
+    command:
+      - -config.file=/etc/mimir/config.yaml
+      - -target=all
+    configs:
+      - source: mimir-config
+        target: /etc/mimir/config.yaml
+        mode: 0444
+    volumes:
+      - mimir-data:/data
+    networks:
+      - lgtm-internal
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 2048M
+        reservations:
+          memory: 768M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+        window: 60s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+
+configs:
+  grafana-datasources:
+    file: ./config/grafana-datasources.yaml
+  otel-collector-config:
+    file: ./config/otel-collector.yaml
+  loki-config:
+    file: ./config/loki.yaml
+  tempo-config:
+    file: ./config/tempo.yaml
+  mimir-config:
+    file: ./config/mimir.yaml
+
+volumes:
+  grafana-data:
+  loki-data:
+  tempo-data:
+  mimir-data:
+
+networks:
+  lgtm-internal:
+    driver: overlay
+    internal: true
+  dokploy-network:
+    external: true

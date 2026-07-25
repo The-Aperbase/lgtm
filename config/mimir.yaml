@@ -1,0 +1,49 @@
+target: all
+multitenancy_enabled: false
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9095
+  log_level: info
+  grpc_server_max_recv_msg_size: 104857600
+  grpc_server_max_send_msg_size: 104857600
+  grpc_server_max_concurrent_streams: 1000
+
+distributor:
+  pool:
+    health_check_ingesters: true
+
+ingester:
+  ring:
+    instance_addr: 127.0.0.1
+    min_ready_duration: 0s
+    final_sleep: 0s
+    num_tokens: 512
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+
+compactor:
+  data_dir: /data/compactor
+
+ruler_storage:
+  backend: local
+  local:
+    directory: /data/rules
+
+limits:
+  compactor_blocks_retention_period: 168h
+  max_global_series_per_user: 0
+  max_global_series_per_metric: 0
+  max_global_exemplars_per_user: 100000
+  native_histograms_ingestion_enabled: true
+  otel_metric_suffixes_enabled: true

@@ -1,0 +1,68 @@
+name: Validate and deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      GRAFANA_DOMAIN: grafana.example.com
+      OTEL_DOMAIN: otel.example.com
+      OTEL_API_KEY: validation-only-api-key
+      GRAFANA_GOOGLE_CLIENT_ID: validation-only-client-id
+      GRAFANA_GOOGLE_CLIENT_SECRET: validation-only-client-secret
+      GRAFANA_ADMIN_PASSWORD: validation-only-admin-password
+      GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: >-
+        email == 'admin.one@example.com' && 'GrafanaAdmin' ||
+        email == 'admin.two@example.com' && 'GrafanaAdmin' ||
+        email == 'viewer@example.com' && 'Viewer'
+      DEPLOY_CONFIGURED: >-
+        ${{ secrets.TS_OAUTH_CLIENT_ID != '' &&
+            secrets.TS_AUDIENCE != '' &&
+            secrets.DOKPLOY_API_TOKEN != '' &&
+            secrets.DOKPLOY_COMPOSE_ID != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate Docker stack
+        run: docker stack config -c deploy-compose.yml > /tmp/deploy-compose.rendered.yml
+
+      - name: Explain skipped deployment
+        if: env.DEPLOY_CONFIGURED != 'true'
+        run: echo "Stack validation passed; deployment is skipped until the documented repository secrets are configured."
+
+      - name: Connect to Tailscale
+        if: env.DEPLOY_CONFIGURED == 'true'
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: dokbox
+
+      - name: Confirm Dokploy connectivity
+        if: env.DEPLOY_CONFIGURED == 'true'
+        run: tailscale ping --timeout=10s dokbox
+
+      - name: Trigger Dokploy redeploy
+        if: env.DEPLOY_CONFIGURED == 'true'
+        env:
+          DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
+          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+        run: |
+          payload="$(jq -n --arg composeId "$DOKPLOY_COMPOSE_ID" '{composeId: $composeId}')"
+          curl -fsS -X POST "http://dokbox:3000/api/compose.deploy" \
+            -H "accept: application/json" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $DOKPLOY_API_TOKEN" \
+            --data "$payload"
