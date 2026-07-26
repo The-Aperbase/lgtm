@@ -9,7 +9,7 @@ Private LGTM stack for ApesDb on Docker Swarm and Dokploy. Applications send OTL
 - Loki 3.7.4 with 30-day retention
 - Tempo 3.0.2 with 14-day retention
 - Prometheus 3.13.1 with 90-day retention
-- node-exporter and cAdvisor on every Swarm node
+- node-exporter on every Swarm node
 
 This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move Loki and Tempo to object storage and replace Prometheus with a scalable metrics backend before making the stack highly available.
 
@@ -42,7 +42,7 @@ Dokploy creates and manages its own routing network during installation. This st
 2. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
 3. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
 4. Put a Cloudflare Access policy in front of the Grafana hostname.
-5. Do not create routes for Alloy, Loki, Tempo, Prometheus, node-exporter, or cAdvisor.
+5. Do not create routes for Alloy, Loki, Tempo, Prometheus, or node-exporter.
 
 Dokploy owns and injects the Grafana Traefik labels and routing-network attachment. Do not add equivalent labels or network membership to `compose.yml`, because doing so duplicates Dokploy's generated service configuration. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 

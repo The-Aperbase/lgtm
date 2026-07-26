@@ -83,16 +83,3 @@ prometheus.scrape "node_exporters" {
   scrape_interval = "30s"
   job_name        = "node-exporter"
 }
-
-discovery.dns "cadvisors" {
-  names = ["tasks.cadvisor"]
-  type  = "A"
-  port  = 8080
-}
-
-prometheus.scrape "cadvisors" {
-  targets         = discovery.dns.cadvisors.targets
-  forward_to      = [prometheus.remote_write.prometheus.receiver]
-  scrape_interval = "30s"
-  job_name        = "cadvisor"
-}
