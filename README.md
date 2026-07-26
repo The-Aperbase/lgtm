@@ -22,10 +22,14 @@ Only Grafana joins Dokploy's routing network. No service publishes a host port.
 
 ## Swarm Preparation
 
-Choose the node that will hold the stateful volumes and run:
+The stack runs a one-shot `prepare-swarm-node` job on a manager during deployment. It labels that node `observability=true` through the Docker socket, then exits. Swarm automatically schedules the pending stateful services after the label is present.
+
+This is intentionally limited to a manager-only replicated job because access to `/var/run/docker.sock` grants Docker administration privileges. The completed task does not retain running socket access.
+
+If automatic preparation fails, apply the equivalent label manually on the manager:
 
 ```bash
-docker node update --label-add observability=true <node-name>
+docker node update --label-add observability=true "$(docker info --format '{{.Swarm.NodeID}}')"
 ```
 
 The observability stack creates the named, attachable `apesdb-telemetry` overlay network during its first deployment. Deploy this stack before ApesDb, whose Compose file consumes that network as an external network.

@@ -31,4 +31,20 @@ if (compose.networks.telemetry.attachable !== true || compose.networks.telemetry
   throw new Error("The telemetry network must remain an attachable overlay.");
 }
 
+const nodePreparation = compose.services["prepare-swarm-node"];
+if (nodePreparation.deploy?.mode !== "replicated-job") {
+  throw new Error("Swarm node preparation must remain a one-shot replicated job.");
+}
+
+if (!nodePreparation.deploy?.placement?.constraints?.includes("node.role == manager")) {
+  throw new Error("Swarm node preparation must run only on a manager.");
+}
+
+const mountsDockerSocket = nodePreparation.volumes?.some(
+  (volume) => volume.source === "/var/run/docker.sock" && volume.target === "/var/run/docker.sock",
+);
+if (!mountsDockerSocket) {
+  throw new Error("Swarm node preparation requires the manager Docker socket.");
+}
+
 console.log("Routing validation passed.");
