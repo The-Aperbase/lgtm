@@ -22,7 +22,7 @@ Only Grafana joins Dokploy's routing network. No service publishes a host port.
 
 ## Swarm Preparation
 
-The stack runs a one-shot `prepare-swarm-node` job on a manager during deployment. It initializes Loki and Tempo volume ownership for their non-root UID, labels that node `observability=true` through the Docker socket, force-reconciles the label-constrained services so stale or failed tasks are replaced, then exits.
+The stack runs the reviewed `scripts/prepare-swarm-node.sh` script as a one-shot job on a manager during deployment. It initializes Loki and Tempo volume ownership for their non-root UID, labels that node `observability=true` through the Docker socket, force-reconciles the label-constrained services so stale or failed tasks are replaced, then exits.
 
 This is intentionally limited to a manager-only replicated job because access to `/var/run/docker.sock` grants Docker administration privileges. The completed task does not retain running socket access.
 
@@ -86,7 +86,7 @@ Docker Swarm does not load `.env` for `docker stack deploy`; the shell export ab
 
 The GitHub Actions workflow in `.github/workflows/deploy.yml` validates the Compose and component configurations, connects to the Dokploy host through Tailscale, and triggers the Dokploy Compose deployment. The deployment creates `apesdb-telemetry` automatically if it does not exist.
 
-The workflow also rejects published host ports or additional services on Dokploy's routing network, fails before deployment when required Actions configuration is absent, and confirms Tailscale connectivity before calling Dokploy.
+The workflow syntax-checks the machine preparation script, validates the complete Compose contract, rejects published host ports or additional services on Dokploy's routing network, fails before deployment when required Actions configuration is absent, and confirms Tailscale connectivity before calling Dokploy.
 
 Configure `DOKPLOY_COMPOSE_ID` as a repository Actions variable. It must identify the observability Compose application and cannot be reused from the ApesDb Compose application.
 

@@ -4,23 +4,10 @@ services:
     environment:
       SWARM_NODE_ID: "{{.Node.ID}}"
       SWARM_SERVICE_NAME: "{{.Service.Name}}"
-    command:
-      - sh
-      - -ec
-      - |
-        chown -R 10001:10001 /storage/loki /storage/tempo
-
-        test -n "$$SWARM_NODE_ID"
-        docker node update --label-add observability=true "$$SWARM_NODE_ID"
-
-        stack_name="$${SWARM_SERVICE_NAME%_prepare-swarm-node}"
-
-        for component in grafana alloy loki tempo prometheus; do
-          target="$${stack_name}_$${component}"
-          if docker service inspect "$$target" >/dev/null 2>&1; then
-            docker service update --force --detach=true "$$target"
-          fi
-        done
+    command: sh /etc/observability/prepare-swarm-node.sh
+    configs:
+      - source: prepare-swarm-node-script
+        target: /etc/observability/prepare-swarm-node.sh
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - loki-data:/storage/loki
@@ -177,7 +164,6 @@ services:
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=90d
       - --web.enable-remote-write-receiver
-      - --web.enable-lifecycle
     volumes:
       - prometheus-data:/prometheus
     configs:
@@ -245,6 +231,8 @@ services:
           memory: 64M
 
 configs:
+  prepare-swarm-node-script:
+    file: ./scripts/prepare-swarm-node.sh
   alloy-config:
     file: ./config/alloy/config.alloy
   grafana-datasources:

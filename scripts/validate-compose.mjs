@@ -47,6 +47,15 @@ if (!mountsDockerSocket) {
   throw new Error("Swarm node preparation requires the manager Docker socket.");
 }
 
+const mountsPreparationScript = nodePreparation.configs?.some(
+  (config) =>
+    config.source === "prepare-swarm-node-script" &&
+    config.target === "/etc/observability/prepare-swarm-node.sh",
+);
+if (!mountsPreparationScript) {
+  throw new Error("Swarm node preparation must mount its reviewed preparation script.");
+}
+
 for (const volumeName of ["loki-data", "tempo-data"]) {
   const target = `/storage/${volumeName.replace("-data", "")}`;
   const mounted = nodePreparation.volumes?.some(
@@ -57,4 +66,4 @@ for (const volumeName of ["loki-data", "tempo-data"]) {
   }
 }
 
-console.log("Routing validation passed.");
+console.log("Compose validation passed.");

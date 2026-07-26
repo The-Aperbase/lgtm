@@ -27,6 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Validate machine preparation script
+        run: sh -n scripts/prepare-swarm-node.sh
+
       - name: Validate Docker stack
         env:
           GRAFANA_ADMIN_PASSWORD: validation-only
@@ -47,7 +50,7 @@ jobs:
           GRAFANA_GOOGLE_ADMIN_EMAIL_2: admin.two@example.com
         run: |
           docker compose --file compose.yml config --format json > /tmp/observability-compose.json
-          node scripts/validate-routing.mjs /tmp/observability-compose.json
+          node scripts/validate-compose.mjs /tmp/observability-compose.json
 
       - name: Validate Alloy configuration
         run: >-
@@ -107,7 +110,6 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
           tags: tag:ci
-          ping: dokbox
 
       - name: Confirm Dokploy connectivity
         if: env.DEPLOY_CONFIGURED == 'true'
