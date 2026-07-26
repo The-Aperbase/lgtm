@@ -22,7 +22,7 @@ Only Grafana joins Dokploy's routing network. No service publishes a host port.
 
 ## Swarm Preparation
 
-The stack runs a one-shot `prepare-swarm-node` job on a manager during deployment. It labels that node `observability=true` through the Docker socket, then exits. Swarm automatically schedules the pending stateful services after the label is present.
+The stack runs a one-shot `prepare-swarm-node` job on a manager during deployment. It labels that node `observability=true` through the Docker socket, force-reconciles the label-constrained services so stale pending tasks are replaced, then exits.
 
 This is intentionally limited to a manager-only replicated job because access to `/var/run/docker.sock` grants Docker administration privileges. The completed task does not retain running socket access.
 
