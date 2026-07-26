@@ -1,204 +1,107 @@
-# LGTM
+# ApesDb Observability
 
-Single-node [LGTM](https://grafana.com/go/webinar/getting-started-with-grafana-lgtm-stack/) observability stack for Docker Swarm on Dokploy:
+Private LGTM stack for ApesDb on Docker Swarm and Dokploy. Applications send OTLP to Alloy over the shared `apesdb-telemetry` overlay network. Only Grafana joins Dokploy's routing network.
 
-- **L**oki for logs
-- **G**rafana for querying and visualization
-- **T**empo for traces
-- **M**imir for metrics
-- OpenTelemetry Collector as the only public telemetry ingress
+## Components
 
-The stack keeps all signals for seven days, targets an 8 GB node, and uses Docker named volumes so the stateful services can be included in Dokploy volume backups. It is intentionally single-node and is not highly available.
+- Grafana 13.1.1
+- Grafana Alloy 1.18.0
+- Loki 3.7.4 with 30-day retention
+- Tempo 3.0.2 with 14-day retention
+- Prometheus 3.13.1 with 90-day retention
+- node-exporter and cAdvisor on every Swarm node
 
-## Public endpoints
+This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move Loki and Tempo to object storage and replace Prometheus with a scalable metrics backend before making the stack highly available.
 
-| Endpoint | Purpose | Authentication |
-| --- | --- | --- |
-| `https://$GRAFANA_DOMAIN` | Grafana | Strict Google OAuth email allowlist |
-| `https://$OTEL_DOMAIN/v1/{metrics,logs,traces}` | OTLP/HTTP | `Authorization: Bearer $OTEL_API_KEY` |
+The stack has two private network planes:
 
-Cloudflare terminates public TLS and sends plain HTTP through the Tunnel to Traefik. Traefik routes Grafana to port 3000 and public OTLP/HTTP to Collector port 4318. No service publishes a host port, and there is no origin-side Let's Encrypt configuration.
+- `apesdb-telemetry` connects ApesDb to Alloy's OTLP receiver.
+- `observability` is an internal overlay connecting Alloy and Grafana to Loki, Tempo, Prometheus, and the infrastructure exporters.
 
-Cloudflare public-hostname tunnels do not support gRPC. Dokploy workloads use OTLP/gRPC directly over the private `lgtm-ingest` Docker overlay instead, avoiding Cloudflare, Traefik, public DNS, and an internet round trip.
+Only Grafana joins Dokploy's routing network. No service publishes a host port.
 
-## 1. Configure Cloudflare Tunnel and Google OAuth
+## Swarm Preparation
 
-The `cloudflared` Dokploy project and Dokploy's Traefik service must both be attached to the external `dokploy-network`. Configure these public hostnames in Cloudflare Zero Trust:
-
-| Public hostname | Service URL |
-| --- | --- |
-| `$GRAFANA_DOMAIN` | `http://dokploy-traefik:80` |
-| `$OTEL_DOMAIN` | `http://dokploy-traefik:80` |
-
-Leave the HTTP Host Header override empty so the original public hostname reaches Traefik's `Host(...)` router. Do not enable HTTPS or a certificate resolver for either origin in Dokploy; the browser and OTLP client still use public HTTPS because Cloudflare terminates TLS.
-
-When Cloudflare manages the Tunnel hostname, it creates the tunnel DNS route; do not point an `A` or `AAAA` record directly at the Dokploy node.
-
-Create a Google OAuth 2.0 **Web application**:
-
-- Authorized JavaScript origin: `https://<GRAFANA_DOMAIN>`
-- Authorized redirect URI: `https://<GRAFANA_DOMAIN>/login/google`
-
-Record the client ID and client secret for the Dokploy environment.
-
-## 2. Configure the Dokploy Stack
-
-Create the shared ingest overlay once on the Swarm manager before the first deployment:
+Choose the node that will hold the stateful volumes and run:
 
 ```bash
-docker network create --driver overlay --attachable lgtm-ingest
+docker node update --label-add observability=true <node-name>
 ```
 
-Create a Dokploy Compose service with:
+The observability stack creates the named, attachable `apesdb-telemetry` overlay network during its first deployment. Deploy this stack before ApesDb, whose Compose file consumes that network as an external network.
 
-- Provider: this GitHub repository
-- Branch: `main`
-- Compose type: **Stack**
-- Compose path: `deploy-compose.yml`
+Dokploy creates and manages its own routing network during installation. Check its actual name with `docker network ls` and set `DOKPLOY_NETWORK` if it is not `dokploy-network`; this stack deliberately does not attempt to recreate that platform-owned network.
 
-Set these values in Dokploy's environment editor:
+## Dokploy Deployment
+
+1. Copy `.env.example` to `.env` and replace every example value.
+2. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
+3. Configure Grafana as the only routed service, using container port `3000` and the hostname in `GRAFANA_ROOT_URL`.
+4. Put a Cloudflare Access policy in front of the Grafana hostname.
+5. Do not create routes for Alloy, Loki, Tempo, Prometheus, node-exporter, or cAdvisor.
+
+## Grafana Google Login
+
+Create a Google OAuth 2.0 Web application with this exact authorized redirect URI:
+
+```text
+https://<grafana-domain>/login/google
+```
+
+Set `GRAFANA_GOOGLE_CLIENT_ID`, `GRAFANA_GOOGLE_CLIENT_SECRET`, and a strict role expression that returns a role only for permitted email addresses. For example:
 
 ```dotenv
-GRAFANA_DOMAIN=grafana.example.com
-OTEL_DOMAIN=otel.example.com
-OTEL_API_KEY=<random API key>
-GRAFANA_GOOGLE_CLIENT_ID=<Google OAuth client ID>
-GRAFANA_GOOGLE_CLIENT_SECRET=<Google OAuth client secret>
-GRAFANA_ADMIN_PASSWORD=<random fallback password>
-GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH="email == 'first.admin@example.com' && 'GrafanaAdmin' || email == 'second.admin@example.com' && 'GrafanaAdmin' || email == 'viewer@example.com' && 'Viewer'"
+GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH=email == 'admin@example.com' && 'GrafanaAdmin' || email == 'viewer@example.com' && 'Viewer'
 ```
 
-Generate strong random values with:
+An address not listed in the expression produces no role and is rejected because strict role mapping is enabled. Do not add a final `|| 'Viewer'`, because that would permit every authenticated Google account.
+
+Google auto-login is enabled on the first rollout, but basic login remains available as a break-glass path. If OAuth fails, open:
+
+```text
+https://<grafana-domain>/login?disableAutoLogin=true
+```
+
+Sign in with `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD`. To roll back through Dokploy, set `GRAFANA_GOOGLE_ENABLED=false` and `GRAFANA_GOOGLE_AUTO_LOGIN=false`, then redeploy. Basic authentication and the login form should remain enabled unless another tested recovery mechanism exists.
+
+If deploying directly from a Swarm manager:
 
 ```bash
-openssl rand -hex 32
+set -a
+. ./.env
+set +a
+docker stack deploy --compose-file compose.yml apesdb-observability
 ```
 
-The role expression has no fallback. Grafana's strict role mapping therefore rejects every Google account not explicitly present. The first two comparisons grant server and organization administrator access; any later comparisons should return `Viewer`.
+Docker Swarm does not load `.env` for `docker stack deploy`; the shell export above is intentional. Dokploy supplies its configured environment variables itself.
 
-Keep runtime values in Dokploy. Do not commit a populated `.env` file.
+## Continuous Deployment
 
-### Optional lockout-recovery variables
+The GitHub Actions workflow in `.github/workflows/deploy.yml` validates the Compose and component configurations, connects to the Dokploy host through Tailscale, and triggers the Dokploy Compose deployment. The deployment creates `apesdb-telemetry` automatically if it does not exist.
 
-These defaults keep Grafana locked to Google:
+The workflow also rejects published host ports or additional services on Dokploy's routing network, skips deployment when required repository secrets are absent, and confirms Tailscale connectivity before calling Dokploy.
 
-```dotenv
-GRAFANA_BASIC_AUTH_ENABLED=false
-GRAFANA_DISABLE_LOGIN_FORM=true
-GRAFANA_GOOGLE_AUTO_LOGIN=true
+Configure the same repository secrets used by ApesDb:
+
+- `TS_OAUTH_CLIENT_ID`
+- `TS_AUDIENCE`
+- `DOKPLOY_API_TOKEN`
+- `DOKPLOY_COMPOSE_ID`
+
+`DOKPLOY_COMPOSE_ID` must identify the observability Compose application in this repository. It is not reusable from the ApesDb Compose application, but the Tailscale and Dokploy API credentials can be shared.
+
+## ApesDb Connection
+
+The ApesDb stack joins the same external telemetry network and sends OTLP/gRPC to:
+
+```text
+http://alloy:4317
 ```
 
-If an incorrect OAuth or role expression locks out both administrators, temporarily set basic auth to `true`, disable Google auto-login, show the login form, and redeploy:
-
-```dotenv
-GRAFANA_BASIC_AUTH_ENABLED=true
-GRAFANA_DISABLE_LOGIN_FORM=false
-GRAFANA_GOOGLE_AUTO_LOGIN=false
-```
-
-Log in as `admin` with `GRAFANA_ADMIN_PASSWORD`, correct the OAuth configuration, and restore the secure defaults immediately.
-
-## 3. Configure GitHub Actions deployment
-
-The deployment follows the same flow as ApesDb: GitHub Actions connects to `dokbox` through Tailscale and calls Dokploy's `compose.deploy` API.
-
-Add these repository Actions secrets:
-
-| Secret | Value |
-| --- | --- |
-| `TS_OAUTH_CLIENT_ID` | Tailscale OAuth client ID used by the existing CI tag |
-| `TS_AUDIENCE` | Tailscale workload identity audience |
-| `DOKPLOY_API_TOKEN` | Dokploy API token |
-| `DOKPLOY_COMPOSE_ID` | ID of the LGTM Compose service |
-
-The first push validates the stack and safely skips deployment while these secrets are absent. After creating the Dokploy service and adding all four secrets, run **Validate and deploy** manually. Every later push to `main` redeploys automatically.
-
-Pull requests run the separate **Compose validation** workflow.
-
-## 4. Configure OpenTelemetry clients
-
-Every public and private receiver requires the same Bearer API key.
-
-### Public OTLP/HTTP
-
-```dotenv
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel.example.com
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20<API_KEY>
-```
-
-### Direct OTLP/gRPC from another Dokploy stack
-
-Attach each telemetry-producing service to the external overlay:
-
-```yaml
-services:
-  app:
-    networks:
-      - default
-      - lgtm-ingest
-
-networks:
-  lgtm-ingest:
-    external: true
-```
-
-Then configure its exporter:
-
-```dotenv
-OTEL_EXPORTER_OTLP_ENDPOINT=http://lgtm-otel-collector:4317
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-OTEL_EXPORTER_OTLP_INSECURE=true
-OTEL_EXPORTER_OTLP_HEADERS=Authorization=Bearer%20<API_KEY>
-```
-
-For direct OTLP/HTTP, use `http://lgtm-otel-collector:4318` with `http/protobuf`. A container that is not attached to `lgtm-ingest` cannot resolve or reach this alias. Some SDK configuration APIs accept the literal header value `Bearer <API_KEY>` instead of the percent-encoded environment-variable form.
-
-If a client outside Dokploy requires gRPC, use Cloudflare WARP private-network routing or create a separately secured public gRPC endpoint that bypasses the public-hostname Tunnel. The latter requires its own origin TLS and firewall design and is intentionally outside this stack.
-
-Rotate the telemetry key by changing `OTEL_API_KEY` in Dokploy and redeploying. Update clients immediately; the stack intentionally accepts only the current key.
-
-## Validation
-
-Render the stack locally with a populated `.env`:
-
-```bash
-docker stack config -c deploy-compose.yml
-```
-
-The CI workflow additionally validates the Collector, Loki, Tempo, and Mimir configuration files with their pinned container images.
+If Dokploy prefixes the Alloy service name with the stack name and does not create the `alloy` network alias, set ApesDb's `OTEL_EXPORTER_OTLP_ENDPOINT` to the resolvable service name shown by `docker service ls`, for example `http://apesdb-observability_alloy:4317`.
 
 ## Operations
 
-### Readiness
+Back up the named volumes for Grafana, Loki, Tempo, and Prometheus. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.
 
-After deployment, confirm every service has one running replica:
-
-```bash
-docker stack services <stack-name>
-```
-
-Then verify:
-
-1. Public OTLP/HTTP requests without the Bearer header are rejected.
-2. Public OTLP/HTTP requests with the API key ingest metrics, logs, and traces.
-3. A service in another stack on `lgtm-ingest` resolves `lgtm-otel-collector` and ingests with OTLP/gRPC.
-4. A service outside `lgtm-ingest` cannot resolve or reach the Collector alias.
-5. Both administrator emails receive `GrafanaAdmin`.
-6. A listed viewer receives `Viewer`.
-7. An unlisted Google account is rejected.
-
-### Persistence and backups
-
-Back up all four named volumes through Dokploy:
-
-- Grafana data
-- Loki data
-- Tempo data
-- Mimir data
-
-All volumes are local to the manager node. Restore them to the same volume names before redeploying the stack.
-
-### Rollback
-
-Use Dokploy's deployment history to redeploy the previous successful revision. Swarm services use `stop-first` updates because the stateful volumes must never be mounted by two replicas simultaneously.
+Monitor Alloy's own logs for rejected or dropped telemetry. Keep the OTLP receivers and backend ports private; Cloudflare Tunnel is only needed for Grafana.

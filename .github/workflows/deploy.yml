@@ -1,29 +1,90 @@
-name: Validate and deploy
+name: Validate and Deploy
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
   workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: Deploy the observability stack to production
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: observability-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  validate-and-deploy:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate Docker stack
+        env:
+          GRAFANA_ADMIN_PASSWORD: validation-only
+          GRAFANA_ROOT_URL: https://grafana.example.com
+          GRAFANA_GOOGLE_CLIENT_ID: validation-only
+          GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
+          GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: email == 'admin@example.com' && 'GrafanaAdmin'
+        run: docker stack config --compose-file compose.yml > /tmp/observability-stack.yml
+
+      - name: Validate private routing
+        env:
+          GRAFANA_ADMIN_PASSWORD: validation-only
+          GRAFANA_ROOT_URL: https://grafana.example.com
+          GRAFANA_GOOGLE_CLIENT_ID: validation-only
+          GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
+          GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: email == 'admin@example.com' && 'GrafanaAdmin'
+        run: |
+          docker compose --file compose.yml config --format json > /tmp/observability-compose.json
+          node scripts/validate-routing.mjs /tmp/observability-compose.json
+
+      - name: Validate Alloy configuration
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/config/alloy/config.alloy:/etc/alloy/config.alloy:ro"
+          grafana/alloy:v1.18.0
+          validate /etc/alloy/config.alloy
+
+      - name: Validate Loki configuration
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/config/loki/config.yml:/etc/loki/config.yml:ro"
+          grafana/loki:3.7.4
+          -config.file=/etc/loki/config.yml
+          -verify-config=true
+
+      - name: Validate Tempo configuration
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/config/tempo/config.yml:/etc/tempo/config.yml:ro"
+          grafana/tempo:3.0.2
+          -config.file=/etc/tempo/config.yml
+          -config.verify=true
+
+      - name: Validate Prometheus configuration
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+          --entrypoint promtool
+          prom/prometheus:v3.13.1
+          check config /etc/prometheus/prometheus.yml
+
+  deploy:
+    needs: validate
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && inputs.deploy_to_production)
     runs-on: ubuntu-latest
     env:
-      GRAFANA_DOMAIN: grafana.example.com
-      OTEL_DOMAIN: otel.example.com
-      OTEL_API_KEY: validation-only-api-key
-      GRAFANA_GOOGLE_CLIENT_ID: validation-only-client-id
-      GRAFANA_GOOGLE_CLIENT_SECRET: validation-only-client-secret
-      GRAFANA_ADMIN_PASSWORD: validation-only-admin-password
-      GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: >-
-        email == 'admin.one@example.com' && 'GrafanaAdmin' ||
-        email == 'admin.two@example.com' && 'GrafanaAdmin' ||
-        email == 'viewer@example.com' && 'Viewer'
       DEPLOY_CONFIGURED: >-
         ${{ secrets.TS_OAUTH_CLIENT_ID != '' &&
             secrets.TS_AUDIENCE != '' &&
@@ -31,18 +92,9 @@ jobs:
             secrets.DOKPLOY_COMPOSE_ID != '' }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Validate Docker stack
-        run: docker stack config -c deploy-compose.yml > /tmp/deploy-compose.rendered.yml
-
-      - name: Validate Cloudflare and overlay routing
-        run: bash scripts/validate-routing.sh
-
       - name: Explain skipped deployment
         if: env.DEPLOY_CONFIGURED != 'true'
-        run: echo "Stack validation passed; deployment is skipped until the documented repository secrets are configured."
+        run: echo "Validation passed; deployment is skipped until all documented secrets are configured."
 
       - name: Connect to Tailscale
         if: env.DEPLOY_CONFIGURED == 'true'
@@ -57,7 +109,7 @@ jobs:
         if: env.DEPLOY_CONFIGURED == 'true'
         run: tailscale ping --timeout=10s dokbox
 
-      - name: Trigger Dokploy redeploy
+      - name: Trigger Dokploy deployment
         if: env.DEPLOY_CONFIGURED == 'true'
         env:
           DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}

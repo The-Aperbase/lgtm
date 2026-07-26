@@ -1,0 +1,233 @@
+services:
+  grafana:
+    image: grafana/grafana:13.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:?GRAFANA_ROOT_URL is required}
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: lax
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_BASIC_ENABLED: ${GRAFANA_BASIC_AUTH_ENABLED:-true}
+      GF_AUTH_DISABLE_LOGIN_FORM: ${GRAFANA_DISABLE_LOGIN_FORM:-false}
+      GF_AUTH_GOOGLE_ENABLED: ${GRAFANA_GOOGLE_ENABLED:-true}
+      GF_AUTH_GOOGLE_NAME: Google
+      GF_AUTH_GOOGLE_ALLOW_SIGN_UP: "true"
+      GF_AUTH_GOOGLE_AUTO_LOGIN: ${GRAFANA_GOOGLE_AUTO_LOGIN:-true}
+      GF_AUTH_GOOGLE_CLIENT_ID: ${GRAFANA_GOOGLE_CLIENT_ID:?GRAFANA_GOOGLE_CLIENT_ID is required}
+      GF_AUTH_GOOGLE_CLIENT_SECRET: ${GRAFANA_GOOGLE_CLIENT_SECRET:?GRAFANA_GOOGLE_CLIENT_SECRET is required}
+      GF_AUTH_GOOGLE_SCOPES: openid email profile
+      GF_AUTH_GOOGLE_AUTH_URL: https://accounts.google.com/o/oauth2/v2/auth
+      GF_AUTH_GOOGLE_TOKEN_URL: https://oauth2.googleapis.com/token
+      GF_AUTH_GOOGLE_API_URL: https://openidconnect.googleapis.com/v1/userinfo
+      GF_AUTH_GOOGLE_USE_PKCE: "true"
+      GF_AUTH_GOOGLE_USE_REFRESH_TOKEN: "true"
+      GF_AUTH_GOOGLE_ROLE_ATTRIBUTE_PATH: ${GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH:?GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH is required}
+      GF_AUTH_GOOGLE_ROLE_ATTRIBUTE_STRICT: "true"
+      GF_AUTH_GOOGLE_ALLOW_ASSIGN_GRAFANA_ADMIN: "true"
+      GF_AUTH_GOOGLE_SKIP_ORG_ROLE_SYNC: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    configs:
+      - source: grafana-datasources
+        target: /etc/grafana/provisioning/datasources/datasources.yml
+    networks:
+      - observability
+      - dokploy
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.observability == true
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  alloy:
+    image: grafana/alloy:v1.18.0
+    command:
+      - run
+      - --storage.path=/var/lib/alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - /etc/alloy/config.alloy
+    volumes:
+      - alloy-data:/var/lib/alloy
+    configs:
+      - source: alloy-config
+        target: /etc/alloy/config.alloy
+    networks:
+      - observability
+      - telemetry
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.observability == true
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  loki:
+    image: grafana/loki:3.7.4
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - loki-data:/var/lib/loki
+    configs:
+      - source: loki-config
+        target: /etc/loki/config.yml
+    networks:
+      - observability
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.observability == true
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+        reservations:
+          memory: 256M
+
+  tempo:
+    image: grafana/tempo:3.0.2
+    command: -config.file=/etc/tempo/config.yml
+    volumes:
+      - tempo-data:/var/lib/tempo
+    configs:
+      - source: tempo-config
+        target: /etc/tempo/config.yml
+    networks:
+      - observability
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.observability == true
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.75"
+          memory: 768M
+        reservations:
+          memory: 256M
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-remote-write-receiver
+      - --web.enable-lifecycle
+    volumes:
+      - prometheus-data:/prometheus
+    configs:
+      - source: prometheus-config
+        target: /etc/prometheus/prometheus.yml
+    networks:
+      - observability
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.observability == true
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.9.1
+    command:
+      - --path.rootfs=/host
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - observability
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 128M
+        reservations:
+          memory: 32M
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.52.1
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=30s
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    networks:
+      - observability
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          memory: 64M
+
+configs:
+  alloy-config:
+    file: ./config/alloy/config.alloy
+  grafana-datasources:
+    file: ./config/grafana/datasources.yml
+  loki-config:
+    file: ./config/loki/config.yml
+  tempo-config:
+    file: ./config/tempo/config.yml
+  prometheus-config:
+    file: ./config/prometheus/prometheus.yml
+
+networks:
+  observability:
+    driver: overlay
+    internal: true
+  telemetry:
+    name: ${TELEMETRY_NETWORK:-apesdb-telemetry}
+    driver: overlay
+    attachable: true
+  dokploy:
+    external: true
+    name: ${DOKPLOY_NETWORK:-dokploy-network}
+
+volumes:
+  alloy-data:
+  grafana-data:
+  loki-data:
+  tempo-data:
+  prometheus-data:

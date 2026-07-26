@@ -1,0 +1,98 @@
+logging {
+  level  = "info"
+  format = "json"
+}
+
+otelcol.receiver.otlp "apesdb" {
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  output {
+    logs    = [otelcol.processor.memory_limiter.default.input]
+    metrics = [otelcol.processor.memory_limiter.default.input]
+    traces  = [otelcol.processor.memory_limiter.default.input]
+  }
+}
+
+otelcol.processor.memory_limiter "default" {
+  check_interval = "1s"
+  limit          = "512MiB"
+
+  output {
+    logs    = [otelcol.processor.batch.default.input]
+    metrics = [otelcol.processor.batch.default.input]
+    traces  = [otelcol.processor.batch.default.input]
+  }
+}
+
+otelcol.processor.batch "default" {
+  timeout         = "5s"
+  send_batch_size = 1024
+
+  output {
+    logs    = [otelcol.exporter.loki.default.input]
+    metrics = [otelcol.exporter.prometheus.default.input]
+    traces  = [otelcol.exporter.otlp.tempo.input]
+  }
+}
+
+otelcol.exporter.otlp "tempo" {
+  client {
+    endpoint = "tempo:4317"
+
+    tls {
+      insecure = true
+    }
+  }
+}
+
+otelcol.exporter.loki "default" {
+  forward_to = [loki.write.default.receiver]
+}
+
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+otelcol.exporter.prometheus "default" {
+  forward_to = [prometheus.remote_write.prometheus.receiver]
+}
+
+prometheus.remote_write "prometheus" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+discovery.dns "node_exporters" {
+  names = ["tasks.node-exporter"]
+  type  = "A"
+  port  = 9100
+}
+
+prometheus.scrape "node_exporters" {
+  targets         = discovery.dns.node_exporters.targets
+  forward_to      = [prometheus.remote_write.prometheus.receiver]
+  scrape_interval = "30s"
+  job_name        = "node-exporter"
+}
+
+discovery.dns "cadvisors" {
+  names = ["tasks.cadvisor"]
+  type  = "A"
+  port  = 8080
+}
+
+prometheus.scrape "cadvisors" {
+  targets         = discovery.dns.cadvisors.targets
+  forward_to      = [prometheus.remote_write.prometheus.receiver]
+  scrape_interval = "30s"
+  job_name        = "cadvisor"
+}
