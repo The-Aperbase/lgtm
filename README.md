@@ -51,8 +51,8 @@ https://<grafana-domain>/login/google
 Set `GRAFANA_GOOGLE_CLIENT_ID`, `GRAFANA_GOOGLE_CLIENT_SECRET`, and the two permitted administrator addresses as ordinary Dokploy environment variables:
 
 ```dotenv
-GRAFANA_GOOGLE_ADMIN_EMAIL_1=j.a.williams373@gmail.com
-GRAFANA_GOOGLE_ADMIN_EMAIL_2=owencross99@gmail.com
+GRAFANA_GOOGLE_ADMIN_EMAIL_1=admin.one@example.com
+GRAFANA_GOOGLE_ADMIN_EMAIL_2=admin.two@example.com
 ```
 
 Compose constructs Grafana's role expression from these values. Both addresses receive `GrafanaAdmin`; every other address produces no role and is rejected because strict role mapping is enabled.
