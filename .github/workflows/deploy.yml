@@ -33,7 +33,8 @@ jobs:
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
-          GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: email == 'admin@example.com' && 'GrafanaAdmin'
+          GRAFANA_GOOGLE_ADMIN_EMAIL_1: admin.one@example.com
+          GRAFANA_GOOGLE_ADMIN_EMAIL_2: admin.two@example.com
         run: docker stack config --compose-file compose.yml > /tmp/observability-stack.yml
 
       - name: Validate private routing
@@ -42,7 +43,8 @@ jobs:
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
-          GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH: email == 'admin@example.com' && 'GrafanaAdmin'
+          GRAFANA_GOOGLE_ADMIN_EMAIL_1: admin.one@example.com
+          GRAFANA_GOOGLE_ADMIN_EMAIL_2: admin.two@example.com
         run: |
           docker compose --file compose.yml config --format json > /tmp/observability-compose.json
           node scripts/validate-routing.mjs /tmp/observability-compose.json

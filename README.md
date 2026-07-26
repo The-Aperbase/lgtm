@@ -48,13 +48,14 @@ Create a Google OAuth 2.0 Web application with this exact authorized redirect UR
 https://<grafana-domain>/login/google
 ```
 
-Set `GRAFANA_GOOGLE_CLIENT_ID`, `GRAFANA_GOOGLE_CLIENT_SECRET`, and a strict role expression that returns a role only for permitted email addresses. For example:
+Set `GRAFANA_GOOGLE_CLIENT_ID`, `GRAFANA_GOOGLE_CLIENT_SECRET`, and the two permitted administrator addresses as ordinary Dokploy environment variables:
 
 ```dotenv
-GRAFANA_GOOGLE_ROLE_ATTRIBUTE_PATH=email == 'admin@example.com' && 'GrafanaAdmin' || email == 'viewer@example.com' && 'Viewer'
+GRAFANA_GOOGLE_ADMIN_EMAIL_1=j.a.williams373@gmail.com
+GRAFANA_GOOGLE_ADMIN_EMAIL_2=owencross99@gmail.com
 ```
 
-An address not listed in the expression produces no role and is rejected because strict role mapping is enabled. Do not add a final `|| 'Viewer'`, because that would permit every authenticated Google account.
+Compose constructs Grafana's role expression from these values. Both addresses receive `GrafanaAdmin`; every other address produces no role and is rejected because strict role mapping is enabled.
 
 Google auto-login is enabled on the first rollout, but basic login remains available as a break-glass path. If OAuth fails, open:
 
