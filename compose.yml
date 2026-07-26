@@ -52,15 +52,6 @@ services:
           memory: 512M
         reservations:
           memory: 128M
-      labels:
-        - traefik.enable=true
-        - traefik.docker.network=${DOKPLOY_NETWORK:-dokploy-network}
-        - traefik.swarm.network=${DOKPLOY_NETWORK:-dokploy-network}
-        - traefik.http.routers.lgtm-grafana.rule=Host(`${GRAFANA_DOMAIN:?GRAFANA_DOMAIN is required}`)
-        - traefik.http.routers.lgtm-grafana.entrypoints=web
-        - traefik.http.routers.lgtm-grafana.service=lgtm-grafana
-        - traefik.http.services.lgtm-grafana.loadbalancer.server.port=3000
-
   alloy:
     image: grafana/alloy:v1.18.0
     command:

@@ -36,11 +36,11 @@ Dokploy creates and manages its own routing network during installation. Check i
 
 1. Copy `.env.example` to `.env` and replace every example value.
 2. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
-3. Set `GRAFANA_DOMAIN` to the hostname only, such as `grafana.example.com`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
+3. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
 4. Put a Cloudflare Access policy in front of the Grafana hostname.
 5. Do not create routes for Alloy, Loki, Tempo, Prometheus, node-exporter, or cAdvisor.
 
-Grafana's Swarm service declares its own Traefik router on Dokploy's `web` entrypoint and container port `3000`. A Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header. You do not need a published host port or a second Dokploy-generated domain route.
+Dokploy owns and injects the Grafana Traefik labels. Do not add equivalent labels to `compose.yml`, because duplicate labels make Docker reject the stack. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 
 ## Grafana Google Login
 

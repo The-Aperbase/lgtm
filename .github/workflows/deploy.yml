@@ -30,7 +30,6 @@ jobs:
       - name: Validate Docker stack
         env:
           GRAFANA_ADMIN_PASSWORD: validation-only
-          GRAFANA_DOMAIN: grafana.example.com
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
@@ -41,7 +40,6 @@ jobs:
       - name: Validate private routing
         env:
           GRAFANA_ADMIN_PASSWORD: validation-only
-          GRAFANA_DOMAIN: grafana.example.com
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
