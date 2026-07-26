@@ -91,12 +91,14 @@ jobs:
         ${{ secrets.TS_OAUTH_CLIENT_ID != '' &&
             secrets.TS_AUDIENCE != '' &&
             secrets.DOKPLOY_API_TOKEN != '' &&
-            secrets.DOKPLOY_COMPOSE_ID != '' }}
+            vars.DOKPLOY_COMPOSE_ID != '' }}
 
     steps:
-      - name: Explain skipped deployment
+      - name: Validate deployment configuration
         if: env.DEPLOY_CONFIGURED != 'true'
-        run: echo "Validation passed; deployment is skipped until all documented secrets are configured."
+        run: |
+          echo "Deployment requires the documented Actions variable and organization or repository secrets." >&2
+          exit 1
 
       - name: Connect to Tailscale
         if: env.DEPLOY_CONFIGURED == 'true'
@@ -115,7 +117,7 @@ jobs:
         if: env.DEPLOY_CONFIGURED == 'true'
         env:
           DOKPLOY_API_TOKEN: ${{ secrets.DOKPLOY_API_TOKEN }}
-          DOKPLOY_COMPOSE_ID: ${{ secrets.DOKPLOY_COMPOSE_ID }}
+          DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
         run: |
           payload="$(jq -n --arg composeId "$DOKPLOY_COMPOSE_ID" '{composeId: $composeId}')"
           curl -fsS -X POST "http://dokbox:3000/api/compose.deploy" \

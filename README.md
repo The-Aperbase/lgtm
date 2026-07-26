@@ -80,16 +80,17 @@ Docker Swarm does not load `.env` for `docker stack deploy`; the shell export ab
 
 The GitHub Actions workflow in `.github/workflows/deploy.yml` validates the Compose and component configurations, connects to the Dokploy host through Tailscale, and triggers the Dokploy Compose deployment. The deployment creates `apesdb-telemetry` automatically if it does not exist.
 
-The workflow also rejects published host ports or additional services on Dokploy's routing network, skips deployment when required repository secrets are absent, and confirms Tailscale connectivity before calling Dokploy.
+The workflow also rejects published host ports or additional services on Dokploy's routing network, fails before deployment when required Actions configuration is absent, and confirms Tailscale connectivity before calling Dokploy.
 
-Configure the same repository secrets used by ApesDb:
+Configure `DOKPLOY_COMPOSE_ID` as a repository Actions variable. It must identify the observability Compose application and cannot be reused from the ApesDb Compose application.
+
+Configure these as repository or organization Actions secrets and grant this repository access to them:
 
 - `TS_OAUTH_CLIENT_ID`
 - `TS_AUDIENCE`
 - `DOKPLOY_API_TOKEN`
-- `DOKPLOY_COMPOSE_ID`
 
-`DOKPLOY_COMPOSE_ID` must identify the observability Compose application in this repository. It is not reusable from the ApesDb Compose application, but the Tailscale and Dokploy API credentials can be shared.
+The Tailscale configuration and Dokploy API token can be shared with ApesDb.
 
 ## ApesDb Connection
 
