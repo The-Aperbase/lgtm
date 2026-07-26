@@ -163,6 +163,7 @@ services:
     image: quay.io/prometheus/node-exporter:v1.9.1
     command:
       - --path.rootfs=/host
+      - --path.udev.data=/host/run/udev/data
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
     volumes:
       - /:/host:ro,rslave
