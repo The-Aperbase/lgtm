@@ -19,6 +19,24 @@ if (routedServices.length !== 1 || routedServices[0] !== "grafana") {
   throw new Error(`Only Grafana may join the Dokploy routing network; found: ${routedServices.join(", ")}`);
 }
 
+const grafanaLabels = compose.services.grafana.deploy?.labels ?? {};
+const requiredGrafanaLabels = {
+  "traefik.enable": "true",
+  "traefik.http.routers.lgtm-grafana.entrypoints": "web",
+  "traefik.http.routers.lgtm-grafana.service": "lgtm-grafana",
+  "traefik.http.services.lgtm-grafana.loadbalancer.server.port": "3000",
+};
+
+for (const [label, expected] of Object.entries(requiredGrafanaLabels)) {
+  if (grafanaLabels[label] !== expected) {
+    throw new Error(`Grafana routing label ${label} must be ${expected}.`);
+  }
+}
+
+if (!grafanaLabels["traefik.http.routers.lgtm-grafana.rule"]?.startsWith("Host(`")) {
+  throw new Error("Grafana must have a host-based Traefik router.");
+}
+
 if (!Object.hasOwn(compose.services.alloy.networks, "telemetry")) {
   throw new Error("Alloy must join the shared telemetry network.");
 }
