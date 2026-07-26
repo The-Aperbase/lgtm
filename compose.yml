@@ -8,6 +8,8 @@ services:
       - sh
       - -ec
       - |
+        chown -R 10001:10001 /storage/loki /storage/tempo
+
         test -n "$$SWARM_NODE_ID"
         docker node update --label-add observability=true "$$SWARM_NODE_ID"
 
@@ -21,6 +23,8 @@ services:
         done
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - loki-data:/storage/loki
+      - tempo-data:/storage/tempo
     networks:
       - observability
     deploy:

@@ -47,4 +47,14 @@ if (!mountsDockerSocket) {
   throw new Error("Swarm node preparation requires the manager Docker socket.");
 }
 
+for (const volumeName of ["loki-data", "tempo-data"]) {
+  const target = `/storage/${volumeName.replace("-data", "")}`;
+  const mounted = nodePreparation.volumes?.some(
+    (volume) => volume.source === volumeName && volume.target === target,
+  );
+  if (!mounted) {
+    throw new Error(`Swarm node preparation must initialize ${volumeName}.`);
+  }
+}
+
 console.log("Routing validation passed.");
