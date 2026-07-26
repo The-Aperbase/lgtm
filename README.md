@@ -18,7 +18,7 @@ The stack has two private network planes:
 - `apesdb-telemetry` connects ApesDb to Alloy's OTLP receiver.
 - `observability` is an internal overlay connecting Alloy and Grafana to Loki, Tempo, Prometheus, and the infrastructure exporters.
 
-Only Grafana joins Dokploy's routing network. No service publishes a host port.
+Only Grafana has a Dokploy domain. Dokploy injects its routing network during deployment; no service publishes a host port.
 
 ## Swarm Preparation
 
@@ -34,7 +34,7 @@ docker node update --label-add observability=true "$(docker info --format '{{.Sw
 
 The observability stack creates the named, attachable `apesdb-telemetry` overlay network during its first deployment. Deploy this stack before ApesDb, whose Compose file consumes that network as an external network.
 
-Dokploy creates and manages its own routing network during installation. Check its actual name with `docker network ls` and set `DOKPLOY_NETWORK` if it is not `dokploy-network`; this stack deliberately does not attempt to recreate that platform-owned network.
+Dokploy creates and manages its own routing network during installation. This stack deliberately does not declare or attach that platform-owned network because Dokploy injects it for the Grafana domain.
 
 ## Dokploy Deployment
 
@@ -44,7 +44,7 @@ Dokploy creates and manages its own routing network during installation. Check i
 4. Put a Cloudflare Access policy in front of the Grafana hostname.
 5. Do not create routes for Alloy, Loki, Tempo, Prometheus, node-exporter, or cAdvisor.
 
-Dokploy owns and injects the Grafana Traefik labels. Do not add equivalent labels to `compose.yml`, because duplicate labels make Docker reject the stack. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
+Dokploy owns and injects the Grafana Traefik labels and routing-network attachment. Do not add equivalent labels or network membership to `compose.yml`, because doing so duplicates Dokploy's generated service configuration. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 
 ## Grafana Google Login
 

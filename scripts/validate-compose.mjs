@@ -15,8 +15,8 @@ const routedServices = Object.entries(compose.services)
   .filter(([, service]) => Object.hasOwn(service.networks, "dokploy"))
   .map(([name]) => name);
 
-if (routedServices.length !== 1 || routedServices[0] !== "grafana") {
-  throw new Error(`Only Grafana may join the Dokploy routing network; found: ${routedServices.join(", ")}`);
+if (routedServices.length > 0 || Object.hasOwn(compose.networks, "dokploy")) {
+  throw new Error("Dokploy must remain responsible for injecting its routing network.");
 }
 
 if (!Object.hasOwn(compose.services.alloy.networks, "telemetry")) {
