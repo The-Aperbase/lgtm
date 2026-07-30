@@ -3,10 +3,9 @@ services:
     image: docker:28-cli
     environment:
       SWARM_NODE_ID: "{{.Node.ID}}"
-      SWARM_SERVICE_NAME: "{{.Service.Name}}"
     command: sh /etc/observability/prepare-swarm-node.sh
     configs:
-      - source: prepare-swarm-node-script
+      - source: prepare-swarm-node-script-v2
         target: /etc/observability/prepare-swarm-node.sh
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -89,7 +88,7 @@ services:
     volumes:
       - alloy-data:/var/lib/alloy
     configs:
-      - source: alloy-config
+      - source: alloy-config-v2
         target: /etc/alloy/config.alloy
     networks:
       - observability
@@ -206,9 +205,9 @@ services:
           memory: 32M
 
 configs:
-  prepare-swarm-node-script:
+  prepare-swarm-node-script-v2:
     file: ./scripts/prepare-swarm-node.sh
-  alloy-config:
+  alloy-config-v2:
     file: ./config/alloy/config.alloy
   grafana-datasources:
     file: ./config/grafana/datasources.yml

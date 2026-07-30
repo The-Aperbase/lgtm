@@ -49,7 +49,7 @@ if (!mountsDockerSocket) {
 
 const mountsPreparationScript = nodePreparation.configs?.some(
   (config) =>
-    config.source === "prepare-swarm-node-script" &&
+    config.source === "prepare-swarm-node-script-v2" &&
     config.target === "/etc/observability/prepare-swarm-node.sh",
 );
 if (!mountsPreparationScript) {

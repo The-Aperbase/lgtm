@@ -22,7 +22,7 @@ Only Grafana has a Dokploy domain. Dokploy injects its routing network during de
 
 ## Swarm Preparation
 
-The stack runs the reviewed `scripts/prepare-swarm-node.sh` script as a one-shot job on a manager during deployment. It initializes Loki and Tempo volume ownership for their non-root UID, labels that node `observability=true` through the Docker socket, force-reconciles the label-constrained services so stale or failed tasks are replaced, then exits.
+The stack runs the reviewed `scripts/prepare-swarm-node.sh` script as a one-shot job on a manager during deployment. It initializes Loki and Tempo volume ownership for their non-root UID, labels that node `observability=true` through the Docker socket, then exits. Swarm reevaluates the label-constrained services when the node label changes.
 
 This is intentionally limited to a manager-only replicated job because access to `/var/run/docker.sock` grants Docker administration privileges. The completed task does not retain running socket access.
 
@@ -81,6 +81,8 @@ docker stack deploy --compose-file compose.yml apesdb-observability
 ```
 
 Docker Swarm does not load `.env` for `docker stack deploy`; the shell export above is intentional. Dokploy supplies its configured environment variables itself.
+
+Swarm config payloads are immutable. When changing a file-backed config, increment its config key in `compose.yml` and update the consuming service's `source` so deployment creates a replacement instead of trying to modify the existing config.
 
 ## Continuous Deployment
 
