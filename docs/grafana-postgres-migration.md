@@ -16,16 +16,19 @@ Do not run a default pgloader SQLite migration against production. Default schem
 
 ## Cutover
 
-1. Enable a maintenance page or otherwise prevent writes through the Grafana route.
-2. Scale Grafana to zero and take a final immutable copy of `grafana.db`. If SQLite WAL files exist, copy the complete directory rather than only the main database file.
-3. Start exactly one Grafana task with `GRAFANA_DATABASE_TYPE=postgres`. Wait for it to create and migrate the native PostgreSQL schema, then scale Grafana back to zero.
-4. Compare the SQLite and PostgreSQL table and column inventories. Resolve every mismatch before loading data.
-5. Empty the Grafana-created PostgreSQL tables without dropping its schema, constraints, defaults, or indexes.
-6. Load the SQLite rows with a rehearsed data-only migration. If using pgloader, disable schema, table, and index creation; exclude `sqlite_sequence`; reset sequences; and fail the cutover if any rows are rejected.
-7. Reset every PostgreSQL sequence to a value greater than the corresponding table's maximum ID.
-8. Set `GRAFANA_DATABASE_TYPE=postgres` permanently and start one Grafana replica.
+1. Enable a maintenance page or otherwise prevent all requests from reaching Grafana.
+2. Scale Grafana to zero. Keep it at zero whenever data is being backed up or loaded.
+3. Take a final immutable copy of `grafana.db`. If SQLite WAL files exist, copy the complete directory rather than only the main database file. This backup defines the last accepted SQLite write.
+4. Set `GRAFANA_DATABASE_TYPE=postgres` and redeploy exactly one Grafana task while the maintenance route remains active. Wait for it to create and migrate the native PostgreSQL schema, then immediately scale Grafana back to zero before loading data.
+5. Compare the SQLite and PostgreSQL table and column inventories. Resolve every mismatch before loading data.
+6. Empty the Grafana-created PostgreSQL tables without dropping its schema, constraints, defaults, or indexes.
+7. Load the SQLite rows with a rehearsed data-only migration. If using pgloader, disable schema, table, and index creation; exclude `sqlite_sequence`; reset sequences; and fail the cutover if any rows are rejected.
+8. Reset every PostgreSQL sequence to a value greater than the corresponding table's maximum ID.
+9. With `GRAFANA_DATABASE_TYPE=postgres` still set, redeploy one Grafana replica and complete verification before restoring public traffic.
 
 Never run SQLite-backed and PostgreSQL-backed Grafana tasks concurrently. They create divergent state.
+
+Grafana does not receive application telemetry. Alloy continues sending metrics, logs, and traces to Prometheus, Loki, and Tempo during this maintenance window. Grafana-managed alert evaluation and notifications pause while Grafana is scaled to zero, and UI changes, logins, and Git webhooks cannot be accepted. Repository polling resumes after startup and reconciles the latest Git state.
 
 ## Verification
 

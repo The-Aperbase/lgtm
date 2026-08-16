@@ -41,7 +41,7 @@ Dokploy creates and manages its own routing network during installation. This st
 
 1. Copy `.env.example` to `.env` and replace every example value.
 2. Set `GRAFANA_DATABASE_PASSWORD` in Dokploy before deploying this revision; Compose requires it even while Grafana remains on SQLite.
-3. Keep `GRAFANA_DATABASE_TYPE=sqlite3` until the existing Grafana database has been migrated using `docs/grafana-postgres-migration.md`.
+3. Keep `GRAFANA_DATABASE_TYPE=sqlite3` until beginning the maintenance cutover in `docs/grafana-postgres-migration.md`.
 4. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
 5. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
 6. Put a Cloudflare Access policy in front of the Grafana hostname.
