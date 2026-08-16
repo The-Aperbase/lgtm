@@ -5,14 +5,13 @@ Private LGTM stack for ApesDb on Docker Swarm and Dokploy. Applications send OTL
 ## Components
 
 - Grafana 13.1.1
-- PostgreSQL 17.6 for Grafana configuration storage
 - Grafana Alloy 1.18.0
 - Loki 3.7.4 with 30-day retention
 - Tempo 3.0.2 with 14-day retention
 - Prometheus 3.13.1 with 90-day retention
 - node-exporter on every Swarm node
 
-This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move PostgreSQL to managed or replicated storage, move Loki and Tempo to object storage, and replace Prometheus with a scalable metrics backend before making the stack highly available.
+This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move Loki and Tempo to object storage and replace Prometheus with a scalable metrics backend before making the stack highly available.
 
 The stack has two private network planes:
 
@@ -40,12 +39,10 @@ Dokploy creates and manages its own routing network during installation. This st
 ## Dokploy Deployment
 
 1. Copy `.env.example` to `.env` and replace every example value.
-2. Set `GRAFANA_DATABASE_PASSWORD` in Dokploy before deploying this revision; Compose requires it even while Grafana remains on SQLite.
-3. Keep `GRAFANA_DATABASE_TYPE=sqlite3` until beginning the maintenance cutover in `docs/grafana-postgres-migration.md`.
-4. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
-5. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
-6. Put a Cloudflare Access policy in front of the Grafana hostname.
-7. Do not create routes for Alloy, Loki, Tempo, Prometheus, PostgreSQL, or node-exporter.
+2. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
+3. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
+4. Put a Cloudflare Access policy in front of the Grafana hostname.
+5. Do not create routes for Alloy, Loki, Tempo, Prometheus, or node-exporter.
 
 Dokploy owns and injects the Grafana Traefik labels and routing-network attachment. Do not add equivalent labels or network membership to `compose.yml`, because doing so duplicates Dokploy's generated service configuration. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 
@@ -115,6 +112,6 @@ If Dokploy prefixes the Alloy service name with the stack name and does not crea
 
 ## Operations
 
-Back up the named volumes for Grafana, PostgreSQL, Loki, Tempo, and Prometheus. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.
+Back up the named volumes for Grafana, Loki, Tempo, and Prometheus. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.
 
 Monitor Alloy's own logs for rejected or dropped telemetry. Keep the OTLP receivers and backend ports private; Cloudflare Tunnel is only needed for Grafana.

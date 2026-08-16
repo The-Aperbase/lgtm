@@ -27,18 +27,6 @@ if (compose.networks.observability.internal !== true) {
   throw new Error("The observability backend network must remain internal.");
 }
 
-const postgres = compose.services.postgres;
-if (!Object.hasOwn(postgres.networks, "observability") || Object.keys(postgres.networks).length !== 1) {
-  throw new Error("PostgreSQL must remain isolated on the observability network.");
-}
-
-const postgresData = postgres.volumes?.some(
-  (volume) => volume.source === "postgres-data" && volume.target === "/var/lib/postgresql/data",
-);
-if (!postgresData) {
-  throw new Error("PostgreSQL must use its persistent data volume.");
-}
-
 if (compose.networks.telemetry.attachable !== true || compose.networks.telemetry.driver !== "overlay") {
   throw new Error("The telemetry network must remain an attachable overlay.");
 }
