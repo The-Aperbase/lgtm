@@ -48,3 +48,16 @@ Before restoring public traffic:
 4. Start one Grafana task and repeat the application checks.
 
 Swarm service rollback does not restore database contents. Any writes accepted after the PostgreSQL cutover must be reconciled manually if rollback is required.
+
+## Password Rotation
+
+`POSTGRES_PASSWORD` is only applied when PostgreSQL initializes an empty data directory. Changing `GRAFANA_DATABASE_PASSWORD` in Dokploy later does not update the password stored by the existing PostgreSQL role.
+
+Rotate the password through a controlled maintenance procedure:
+
+1. Generate the new password without removing the current Dokploy value.
+2. Connect to PostgreSQL through a trusted administrative session and change the `grafana` role password with `ALTER ROLE`.
+3. Immediately update `GRAFANA_DATABASE_PASSWORD` in Dokploy and redeploy Grafana.
+4. Verify a new Grafana database connection, then invalidate any exposed copies of the old password.
+
+The PostgreSQL healthcheck uses a local connection and can remain healthy when Grafana has the wrong password. Include an authenticated Grafana request in rotation verification.

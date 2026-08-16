@@ -40,11 +40,12 @@ Dokploy creates and manages its own routing network during installation. This st
 ## Dokploy Deployment
 
 1. Copy `.env.example` to `.env` and replace every example value.
-2. Keep `GRAFANA_DATABASE_TYPE=sqlite3` until the existing Grafana database has been migrated using `docs/grafana-postgres-migration.md`.
-3. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
-4. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
-5. Put a Cloudflare Access policy in front of the Grafana hostname.
-6. Do not create routes for Alloy, Loki, Tempo, Prometheus, PostgreSQL, or node-exporter.
+2. Set `GRAFANA_DATABASE_PASSWORD` in Dokploy before deploying this revision; Compose requires it even while Grafana remains on SQLite.
+3. Keep `GRAFANA_DATABASE_TYPE=sqlite3` until the existing Grafana database has been migrated using `docs/grafana-postgres-migration.md`.
+4. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
+5. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
+6. Put a Cloudflare Access policy in front of the Grafana hostname.
+7. Do not create routes for Alloy, Loki, Tempo, Prometheus, PostgreSQL, or node-exporter.
 
 Dokploy owns and injects the Grafana Traefik labels and routing-network attachment. Do not add equivalent labels or network membership to `compose.yml`, because doing so duplicates Dokploy's generated service configuration. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 
