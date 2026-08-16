@@ -58,6 +58,9 @@ services:
       GF_AUTH_GOOGLE_SKIP_ORG_ROLE_SYNC: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DATABASE_WAL: "true"
+      GF_DATABASE_QUERY_RETRIES: "10"
+      GF_DATABASE_TRANSACTION_RETRIES: "10"
     volumes:
       - grafana-data:/var/lib/grafana
     configs:
@@ -74,10 +77,12 @@ services:
         condition: on-failure
       resources:
         limits:
-          cpus: "0.50"
-          memory: 512M
+          cpus: "1.00"
+          memory: 1G
         reservations:
-          memory: 128M
+          cpus: "0.25"
+          memory: 256M
+
   alloy:
     image: grafana/alloy:v1.18.0
     command:
