@@ -112,19 +112,34 @@ If Dokploy prefixes the Alloy service name with the stack name and does not crea
 
 ## Local Development
 
-Local development merges `docker-compose.yml` over the production `compose.yml`. The override publishes Grafana on port 3000, permits HTTP cookies, uses bridge networks, skips the Swarm preparation job, and initializes Loki and Tempo volume ownership locally.
+Local development merges `docker-compose.yml` over the production `compose.yml`. The override publishes Grafana and Alloy's OTLP receivers, permits HTTP cookies, gives Grafana outbound access, uses bridge networks, skips the Swarm preparation job, and initializes Loki and Tempo volume ownership locally.
 
 Create the ignored local environment file and replace its example admin password:
 
 ```bash
 cp .env.local.example .env
+docker compose --file ../ApesDb/docker-compose.yml --project-directory ../ApesDb stop observability
 docker compose config
 docker compose up -d
 ```
 
 Open Grafana at `http://localhost:3000`. Google login is disabled locally; use `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` from `.env`.
 
-Deploy this stack before starting local ApesDb so Docker creates the external `apesdb-telemetry` bridge network. Configure ApesDb to join that network and export OTLP to:
+ApesDb's local Compose file includes a bundled `grafana/otel-lgtm` service that uses the same ports. The command above stops that service before starting this dedicated stack. Do not restart it concurrently; when starting ApesDb dependencies, target `postgres`, `redis`, and `flyway` rather than every service in its Compose file.
+
+The locally hosted API and worker already export OTLP to:
+
+```text
+http://localhost:4317
+```
+
+Browser telemetry uses:
+
+```text
+http://localhost:4318
+```
+
+For containerized applications, deploy this stack first so Docker creates the `apesdb-telemetry` bridge network, attach the application to it, and export OTLP to:
 
 ```text
 http://alloy:4317
