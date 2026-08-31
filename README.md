@@ -5,13 +5,14 @@ Private LGTM stack for ApesDb on Docker Swarm and Dokploy. Applications send OTL
 ## Components
 
 - Grafana 13.1.1
+- PostgreSQL 18.4 for Grafana configuration storage
 - Grafana Alloy 1.18.0
 - Loki 3.7.4 with 30-day retention
 - Tempo 3.0.2 with 14-day retention
 - Prometheus 3.13.1 with 90-day retention
 - node-exporter on every Swarm node
 
-This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move Loki and Tempo to object storage and replace Prometheus with a scalable metrics backend before making the stack highly available.
+This configuration uses local volumes and one replica of each stateful service. It is intended for a small, single-node installation. Move PostgreSQL to managed or replicated storage, move Loki and Tempo to object storage, and replace Prometheus with a scalable metrics backend before making the stack highly available.
 
 The stack has two private network planes:
 
@@ -39,10 +40,11 @@ Dokploy creates and manages its own routing network during installation. This st
 ## Dokploy Deployment
 
 1. Copy `.env.example` to `.env` and replace every example value.
-2. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
-3. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
-4. Put a Cloudflare Access policy in front of the Grafana hostname.
-5. Do not create routes for Alloy, Loki, Tempo, Prometheus, or node-exporter.
+2. Set a unique `GRAFANA_DATABASE_PASSWORD` in Dokploy before deploying this revision.
+3. Create a Compose application in Dokploy from this directory or repository using `compose.yml`.
+4. Add the Grafana domain in Dokploy with container port `3000`, and set `GRAFANA_ROOT_URL` to its public HTTPS URL.
+5. Put a Cloudflare Access policy in front of the Grafana hostname.
+6. Do not create routes for Alloy, Loki, Tempo, Prometheus, PostgreSQL, or node-exporter.
 
 Dokploy owns and injects the Grafana Traefik labels and routing-network attachment. Do not add equivalent labels or network membership to `compose.yml`, because doing so duplicates Dokploy's generated service configuration. The Cloudflare Tunnel hostname should forward to Dokploy's Traefik HTTP origin while preserving the original Host header; no host port should be published.
 
@@ -84,6 +86,8 @@ Docker Swarm does not load `.env` for `docker stack deploy`; the shell export ab
 
 Swarm config payloads are immutable. When changing a file-backed config, increment its config key in `compose.yml` and update the consuming service's `source` so deployment creates a replacement instead of trying to modify the existing config.
 
+Grafana uses a fresh PostgreSQL database on the versioned `grafana-postgres-data-v1` volume. The first deployment intentionally does not migrate the previous SQLite configuration database, so users, sessions, UI-created dashboards, alerting configuration, Git Sync connections, and other Grafana state must be recreated. Metrics, logs, and traces remain in Prometheus, Loki, and Tempo.
+
 ## Continuous Deployment
 
 The GitHub Actions workflow in `.github/workflows/deploy.yml` validates the Compose and component configurations, connects to the Dokploy host through Tailscale, and triggers the Dokploy Compose deployment. The deployment creates `apesdb-telemetry` automatically if it does not exist.
@@ -110,8 +114,47 @@ http://alloy:4317
 
 If Dokploy prefixes the Alloy service name with the stack name and does not create the `alloy` network alias, set ApesDb's `OTEL_EXPORTER_OTLP_ENDPOINT` to the resolvable service name shown by `docker service ls`, for example `http://apesdb-observability_alloy:4317`.
 
+## Local Development
+
+Local development merges `docker-compose.yml` over the production `compose.yml`. The override publishes Grafana and Alloy's OTLP receivers, permits HTTP cookies, gives Grafana outbound access, uses bridge networks, skips the Swarm preparation job, and initializes Loki and Tempo volume ownership locally.
+
+Create the ignored local environment file and replace its example admin and database passwords:
+
+```bash
+cp .env.local.example .env
+docker compose --file ../ApesDb/docker-compose.yml --project-directory ../ApesDb stop observability
+docker compose config
+docker compose up -d
+```
+
+Open Grafana at `http://localhost:3000`. Google login is disabled locally; use `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` from `.env`.
+
+ApesDb's local Compose file includes a bundled `grafana/otel-lgtm` service that uses the same ports. The command above stops that service before starting this dedicated stack. Do not restart it concurrently; when starting ApesDb dependencies, target `postgres`, `redis`, and `flyway` rather than every service in its Compose file.
+
+The locally hosted API and worker already export OTLP to:
+
+```text
+http://localhost:4317
+```
+
+Browser telemetry uses:
+
+```text
+http://localhost:4318
+```
+
+For containerized applications, deploy this stack first so Docker creates the `apesdb-telemetry` bridge network, attach the application to it, and export OTLP to:
+
+```text
+http://alloy:4317
+```
+
+If the short service name does not resolve, inspect `docker compose ps` and use the Alloy container or project-qualified network alias. Do not add local ports, HTTP cookie settings, or bridge drivers to `compose.yml`; Dokploy continues to deploy that file alone.
+
 ## Operations
 
-Back up the named volumes for Grafana, Loki, Tempo, and Prometheus. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.
+Back up the named volumes for Grafana, PostgreSQL, Loki, Tempo, and Prometheus. Use `pg_dump` for a consistent logical PostgreSQL backup, or stop PostgreSQL before taking a physical volume snapshot. Test the corresponding restore procedure. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.
+
+`GRAFANA_DATABASE_PASSWORD` initializes the PostgreSQL role only when `grafana-postgres-data-v1` is empty. For later rotation, change the `grafana` role password in PostgreSQL first, then update the Dokploy variable and redeploy Grafana; changing only the environment variable causes an authentication outage.
 
 Monitor Alloy's own logs for rejected or dropped telemetry. Keep the OTLP receivers and backend ports private; Cloudflare Tunnel is only needed for Grafana.

@@ -1,0 +1,55 @@
+services:
+  prepare-swarm-node:
+    profiles:
+      - swarm-only
+
+  prepare-local-volumes:
+    image: alpine:3.22.1
+    command: chown -R 10001:10001 /storage/loki /storage/tempo
+    network_mode: none
+    volumes:
+      - loki-data:/storage/loki
+      - tempo-data:/storage/tempo
+    restart: "no"
+
+  grafana:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_COOKIE_SECURE: "false"
+    networks:
+      - observability
+      - local-egress
+    ports:
+      - "3000:3000"
+
+  alloy:
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+
+  loki:
+    depends_on:
+      prepare-local-volumes:
+        condition: service_completed_successfully
+
+  tempo:
+    depends_on:
+      prepare-local-volumes:
+        condition: service_completed_successfully
+
+  node-exporter:
+    volumes:
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+
+networks:
+  observability:
+    driver: bridge
+  telemetry:
+    driver: bridge
+  local-egress:
+    driver: bridge
