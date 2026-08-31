@@ -13,6 +13,9 @@ services:
     restart: "no"
 
   grafana:
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       GF_SECURITY_COOKIE_SECURE: "false"
     networks:

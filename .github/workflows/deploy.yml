@@ -33,6 +33,7 @@ jobs:
       - name: Validate Docker stack
         env:
           GRAFANA_ADMIN_PASSWORD: validation-only
+          GRAFANA_DATABASE_PASSWORD: validation-only
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
@@ -43,6 +44,7 @@ jobs:
       - name: Validate private routing
         env:
           GRAFANA_ADMIN_PASSWORD: validation-only
+          GRAFANA_DATABASE_PASSWORD: validation-only
           GRAFANA_ROOT_URL: https://grafana.example.com
           GRAFANA_GOOGLE_CLIENT_ID: validation-only
           GRAFANA_GOOGLE_CLIENT_SECRET: validation-only
@@ -59,6 +61,30 @@ jobs:
           --file compose.yml
           --file docker-compose.yml
           config
+
+      - name: Smoke test Grafana with PostgreSQL
+        env:
+          COMPOSE_ARGS: >-
+            --project-name observability-smoke
+            --env-file .env.local.example
+            --file compose.yml
+            --file docker-compose.yml
+        run: |
+          cleanup() {
+            docker compose $COMPOSE_ARGS down --volumes
+          }
+          trap cleanup EXIT
+
+          docker compose $COMPOSE_ARGS up --detach postgres grafana
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:3000/api/health | jq --exit-status '.database == "ok"'; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose $COMPOSE_ARGS logs postgres grafana
+          exit 1
 
       - name: Validate Alloy configuration
         run: >-
