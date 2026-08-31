@@ -110,6 +110,28 @@ http://alloy:4317
 
 If Dokploy prefixes the Alloy service name with the stack name and does not create the `alloy` network alias, set ApesDb's `OTEL_EXPORTER_OTLP_ENDPOINT` to the resolvable service name shown by `docker service ls`, for example `http://apesdb-observability_alloy:4317`.
 
+## Local Development
+
+Local development merges `docker-compose.yml` over the production `compose.yml`. The override publishes Grafana on port 3000, permits HTTP cookies, uses bridge networks, skips the Swarm preparation job, and initializes Loki and Tempo volume ownership locally.
+
+Create the ignored local environment file and replace its example admin password:
+
+```bash
+cp .env.local.example .env
+docker compose config
+docker compose up -d
+```
+
+Open Grafana at `http://localhost:3000`. Google login is disabled locally; use `GRAFANA_ADMIN_USER` and `GRAFANA_ADMIN_PASSWORD` from `.env`.
+
+Deploy this stack before starting local ApesDb so Docker creates the external `apesdb-telemetry` bridge network. Configure ApesDb to join that network and export OTLP to:
+
+```text
+http://alloy:4317
+```
+
+If the short service name does not resolve, inspect `docker compose ps` and use the Alloy container or project-qualified network alias. Do not add local ports, HTTP cookie settings, or bridge drivers to `compose.yml`; Dokploy continues to deploy that file alone.
+
 ## Operations
 
 Back up the named volumes for Grafana, Loki, Tempo, and Prometheus. A Swarm named volume is local to the node selected by `node.labels.observability`; moving a service to another node does not move its data.

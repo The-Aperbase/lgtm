@@ -52,6 +52,14 @@ jobs:
           docker compose --file compose.yml config --format json > /tmp/observability-compose.json
           node scripts/validate-compose.mjs /tmp/observability-compose.json
 
+      - name: Validate local Docker Compose
+        run: >-
+          docker compose
+          --env-file .env.local.example
+          --file compose.yml
+          --file docker-compose.yml
+          config
+
       - name: Validate Alloy configuration
         run: >-
           docker run --rm
